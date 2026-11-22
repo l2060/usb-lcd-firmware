@@ -43,7 +43,7 @@
 |---|---|---|
 | MCU | CH32X033F8P6 | RISC-V RV32IMAC @48MHz，62KB Flash，20KB SRAM，内置 USBFS |
 | 显示驱动 | GC9307 | 172×320 IPS，4-wire SPI，RGB565 |
-| 外部 Flash | W25Q64 | 8MB SPI NOR，4KB 扇区 |
+| 外部 Flash | 8MB SPI NOR | MSU2 LITE 实测为 8MB（4KB 扇区） |
 | 可见区域 | 1.47" | 横屏使用 320×172 |
 
 **引脚（本固件实际使用）**
@@ -78,8 +78,8 @@ usb-lcd-firmware/
 ├─ docs/
 │   ├─ HARDWARE.md         硬件说明与分区表
 │   ├─ datasheet/          公开资料：芯片手册、板卡说明、厂商开发指南
-│   ├─ schematic/          原理图截图
-│   └─ images/             参考图、原厂固件备份
+│   ├─ schematic/          原理图截图（vendor-generic/ 为厂商通用系列，仅供参考）
+│   └─ images/             参考图（原厂固件备份仅本地保留，不纳入 git）
 └─ README.md
 ```
 
@@ -92,7 +92,7 @@ usb-lcd-firmware/
 - 硬件：MSU2 LITE（或同方案的 CH32X033 + GC9307 板）
 - 第一次烧录：WCH-Link / DAP-Link（SWD），或厂商烧录工具
 - 上位机：Windows 10/11 x64 + [.NET Desktop Runtime 11](https://dotnet.microsoft.com/download)
-- **务必备份**：先用厂商工具把原厂固件与外部 Flash 完整读出（见 `docs/images/`），以便回退
+- **务必备份**：先用厂商工具把原厂固件与外部 Flash 完整读出（仓库不含原厂固件，见下方说明）
 
 ### 2. 烧录本项目的 Bootloader（只需一次）
 
@@ -127,7 +127,8 @@ usb-lcd-firmware/
 
 **B. 用 SWD** 直接把 `APP_v104.hex` 写到 `0x9200`。
 
-> 想回到原厂固件：把 `docs/images/` 里的原厂备份写回对应地址即可。
+> 想回到原厂固件：需要**自己事先提取**的原厂备份（仓库不含原厂固件，`docs/images/` 仅本地保留，
+> 且未纳入 git）。
 
 ### 4. 使用上位机
 
@@ -240,7 +241,9 @@ dotnet publish src/Aurora.App -c Release -r win-x64 --self-contained false -o ..
 画面变化太剧烈导致单帧数据过大，工具已按 2KB 分批提交；仍失败可降低刷新频率。
 
 **Q：能刷回原厂吗？**
-可以。`docs/images/` 保留了原厂内部 Flash 与外部 Flash 的备份，用厂商工具写回即可。
+可以，但前提是你**提前做过备份**——本仓库不包含原厂固件。
+`docs/images/` 目录（不纳入 git）用于本地存放：`factory_flash_8MB.bin`（外部 Flash 全量）、
+`vendor_app.bin`（原厂 APP）。刷机前请先用厂商工具读出这两份，回退时写回即可。
 
 ---
 
