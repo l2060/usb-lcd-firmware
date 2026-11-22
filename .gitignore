@@ -17,3 +17,8 @@ src/bl/*.hex
 # large vendor backup (kept locally)
 docs/images/factory_flash_8MB.bin
 
+
+# vendor artifacts (not redistributable)
+docs/images/vendor_app.bin
+docs/images/factory_flash_8MB.bin
+
