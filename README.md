@@ -1,16 +1,21 @@
-# USB LCD Firmware — MSU2 LITE 便携显示屏
+# MSU2 LITE 自定义固件（非官方）
 
-把一块 1.47 英寸的 USB 小屏幕做成"桌面状态屏"或"副屏"：
-插上 USB 就是一个串口设备，上位机可以实时推送画面、文字、图形，也可以把整个桌面投影上来。
+> **本项目是第三方社区作品，与 MSU2 LITE 的原厂 / 品牌方没有任何关系。**
+> 我们只是针对该硬件**重新实现了固件与上位机工具**，不销售、不代理、不代表该产品。
+> "MSU2 LITE" 等名称与商标归其各自所有者。刷写自定义固件可能导致设备无法使用、失去保修，
+> 请自行评估风险。
 
-固件完全自研（含 Bootloader），支持 USB 串口升级，不需要拆机、不需要短接。
+把 MSU2 LITE 这块 USB 小屏变成更好用的"桌面状态屏 / 副屏"：
+插上 USB 就是一个串口设备，上位机可以实时推画面、推文字、画图形，也可以把整个桌面投影上来。
+
+固件（APP + Bootloader）与上位机均为本仓库自行实现，支持 USB 串口升级，不需要拆机或短接。
 
 ```
 ┌─────────────┐   USB CDC    ┌──────────────────┐
 │  上位机      │ ───────────► │  CH32X033F8P6    │ ── SPI ──► GC9307 320×172
 │ Aurora Suite │ ◄─────────── │  62KB Flash      │            IPS 面板
-└─────────────┘   协议应答    │  20KB SRAM       │ ── SPI ──► W25Q64 8MB
-                              └──────────────────┘            （背景图 / 字库）
+└─────────────┘   自定义协议  │  20KB SRAM       │ ── SPI ──► W25Q64 8MB
+                              └──────────────────┘      （背景图 / 字库）
 ```
 
 ---
@@ -30,7 +35,9 @@
 
 ---
 
-## 二、硬件
+## 二、硬件前提
+
+本固件**只适用于**搭载下列器件的 MSU2 LITE 硬件（同方案的自制板也可）：
 
 | 器件 | 型号 | 关键参数 |
 |---|---|---|
@@ -39,7 +46,7 @@
 | 外部 Flash | W25Q64 | 8MB SPI NOR，4KB 扇区 |
 | 可见区域 | 1.47" | 横屏使用 320×172 |
 
-**引脚（固件实际使用）**
+**引脚（本固件实际使用）**
 
 | 功能 | 引脚 |
 |---|---|
@@ -49,9 +56,9 @@
 | Flash CS | PB7 |
 
 > ⚠️ PA6 同时是 LCD 的 DC 和 Flash 的 MISO。**LCD 窗口打开期间（CS 低）绝对不能读外部 Flash**，
-> 否则会中断窗口写入，导致像素丢失、错位甚至花屏。详见 [PROTOCOL.md](docs/PROTOCOL.md)。
+> 否则会中断窗口写入，导致像素丢失、错位甚至花屏。详见 [docs/PROTOCOL.md](docs/PROTOCOL.md)。
 
-更多硬件细节（分区表、外部 Flash 布局、缺口资料）见 [docs/HARDWARE.md](docs/HARDWARE.md)。
+更多硬件细节（分区表、外部 Flash 布局、资料缺口）见 [docs/HARDWARE.md](docs/HARDWARE.md)。
 
 ---
 
@@ -59,9 +66,9 @@
 
 ```
 usb-lcd-firmware/
-├─ src/                    固件（RISC-V，CH32X033）
+├─ src/                    自定义固件（RISC-V，CH32X033）
 │   ├─ app/                APP 工程（User/main.c 为主逻辑）
-│   ├─ bl/                 Bootloader 工程
+│   ├─ bl/                 自研 Bootloader 工程
 │   ├─ build.sh            一键编译脚本（Linux）
 │   └─ README.txt          工程说明
 ├─ host/                   上位机
@@ -70,7 +77,7 @@ usb-lcd-firmware/
 │   └─ web/                早期网页版工具（已弃用，仅留档）
 ├─ docs/
 │   ├─ HARDWARE.md         硬件说明与分区表
-│   ├─ datasheet/          芯片手册、板卡说明、原厂开发指南
+│   ├─ datasheet/          公开资料：芯片手册、板卡说明、厂商开发指南
 │   ├─ schematic/          原理图截图
 │   └─ images/             参考图、原厂固件备份
 └─ README.md
@@ -82,11 +89,12 @@ usb-lcd-firmware/
 
 ### 1. 准备
 
-- 硬件：MSU2 LITE 屏（或同方案的 CH32X033 + GC9307 板）
+- 硬件：MSU2 LITE（或同方案的 CH32X033 + GC9307 板）
 - 第一次烧录：WCH-Link / DAP-Link（SWD），或厂商烧录工具
 - 上位机：Windows 10/11 x64 + [.NET Desktop Runtime 11](https://dotnet.microsoft.com/download)
+- **务必备份**：先用厂商工具把原厂固件与外部 Flash 完整读出（见 `docs/images/`），以便回退
 
-### 2. 烧录 Bootloader（只需一次）
+### 2. 烧录本项目的 Bootloader（只需一次）
 
 用 SWD 工具把 `BL_v67.hex` 写入芯片，起始地址 `0x00000000`。
 
@@ -106,6 +114,8 @@ usb-lcd-firmware/
 3. 工具会自动等待设备重启并重新连接
 
 **B. 用 SWD** 直接把 `APP_v104.hex` 写到 `0x9200`。
+
+> 想回到原厂固件：把 `docs/images/` 里的原厂备份写回对应地址即可。
 
 ### 4. 使用上位机
 
@@ -153,9 +163,9 @@ dotnet run -- /dev/ttyACM0
 
 ---
 
-## 五、协议速查
+## 五、自定义协议速查
 
-完整协议见 [docs/PROTOCOL.md](docs/PROTOCOL.md)。
+完整协议见 [docs/PROTOCOL.md](docs/PROTOCOL.md)。**这是本项目的私有协议，与原厂协议无关。**
 
 ```
 帧格式: A5 5A | ver | flags | seq | cmd(2 LE) | len(2 LE) | payload | crc16
@@ -217,14 +227,17 @@ dotnet publish src/Aurora.App -c Release -r win-x64 --self-contained false -o ..
 **Q：推流时提示 CRC 校验失败？**
 画面变化太剧烈导致单帧数据过大，工具已按 2KB 分批提交；仍失败可降低刷新频率。
 
+**Q：能刷回原厂吗？**
+可以。`docs/images/` 保留了原厂内部 Flash 与外部 Flash 的备份，用厂商工具写回即可。
+
 ---
 
 ## 八、状态与版本
 
 | 组件 | 版本 | 说明 |
 |---|---|---|
-| APP | v104 | 字库、图元、方向、流式 |
-| BL | v67 | USB 升级、开机图、倒计时 |
+| 自定义 APP | v104 | 字库、图元、方向、流式 |
+| 自定义 BL | v67 | USB 升级、开机图、倒计时 |
 | Aurora Suite | 持续更新 | Windows WPF 调试工具 |
 
 已知限制：
@@ -232,3 +245,12 @@ dotnet publish src/Aurora.App -c Release -r win-x64 --self-contained false -o ..
 - BL 区仅剩约 500 字节空间，新增功能可能需要精简或重新分区；
 - 设备端图元无抗锯齿（圆角/圆会有 1–2px 阶梯），追求效果建议主机预渲染后整块下发；
 - 面板为 RGB565（65,536 色），渐变可能出现色带，可用抖动缓解。
+
+---
+
+## 九、免责声明
+
+- 本项目为**第三方非官方**实现，与 MSU2 LITE 的原厂、品牌方、销售方无任何隶属或合作关系；
+- 仓库中 `docs/datasheet`、`docs/schematic` 等资料版权归各自所有者，仅作学习与研究参考；
+- 刷写自定义固件属于对设备的改造，可能造成设备损坏或失去保修，**风险由使用者自行承担**；
+- 本项目不含任何原厂固件源码，`docs/images` 中的原厂固件备份仅用于个人回退。
