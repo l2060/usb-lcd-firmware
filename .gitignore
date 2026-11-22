@@ -1,0 +1,19 @@
+﻿# build output
+bin/
+obj/
+*.user
+*.suo
+.vs/
+dist/
+
+# firmware build artifacts (keep sources)
+src/app/*.o
+src/app/*.elf
+src/app/*.hex
+src/bl/*.o
+src/bl/*.elf
+src/bl/*.hex
+
+# large vendor backup (kept locally)
+docs/images/factory_flash_8MB.bin
+

@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>MSU2_LITE 调试工具 · MS2-Link</title>
+<style>
+  body{background:#101317;color:#e6ecf3;font-family:system-ui,"Microsoft YaHei",sans-serif;margin:20px}
+  h1{font-size:16px;font-weight:600;margin:0 0 12px}
+  .row{display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap}
+  .panel{background:#171c23;border:1px solid #232b36;border-radius:10px;padding:12px}
+  canvas{image-rendering:pixelated;border:1px solid #2a3442;border-radius:6px;display:block}
+  button{background:#1f6feb;color:#fff;border:0;border-radius:6px;padding:7px 11px;font-size:12px;cursor:pointer}
+  button:disabled{background:#242c37;color:#6b7887;cursor:default}
+  button.g{background:#232b36}
+  input[type=text]{background:#0d1117;color:#e6ecf3;border:1px solid #2a3442;border-radius:6px;padding:6px 8px;width:180px}
+  input[type=color]{width:36px;height:30px;background:none;border:1px solid #2a3442;border-radius:6px}
+  label{font-size:12px;color:#9aa7b6}
+  #log{font-family:Consolas,monospace;font-size:12px;background:#0d1117;border:1px solid #232b36;border-radius:6px;padding:8px;height:200px;width:540px;overflow:auto;white-space:pre-wrap}
+  .ok{color:#4ade80}.err{color:#f87171}.dim{color:#7d8b9c}.warn{color:#fbbf24}
+  .stat{font-size:12px;margin-left:6px}
+</style>
+</head>
+<body>
+<h1>MSU2_LITE 调试工具 · MS2-Link v1</h1>
+<div class="row">
+  <div class="panel">
+    <div class="row" style="margin-bottom:10px">
+      <button id="connect">连接设备</button>
+      <button id="disconnect" class="g" disabled>断开</button>
+      <button id="info" class="g" disabled>INFO</button>
+      <button id="ping" class="g" disabled>PING</button>
+      <button id="boot" class="g" disabled>重启进 Bootloader</button>
+      <button id="runapp" class="g" disabled>运行 App</button>
+      <button id="reconnect" class="g" disabled>重新连接</button>
+      <button id="selftest" class="g" disabled>Flash 自检</button>
+      <button id="echo" class="g" disabled>回显测试</button>
+      <button id="meta" class="g" disabled>元数据</button>
+      <label><input type="checkbox" id="dbg"> 详细日志</label>
+      <span id="stat" class="stat dim">未连接</span>
+    </div>
+
+    <canvas id="cv" width="320" height="172"></canvas>
+
+    <div class="row" style="margin-top:10px">
+      <label>文本 <input type="text" id="txt" value="HANKS-MFF 42%"></label>
+      <label>颜色 <input type="color" id="col" value="#00ff88"></label>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <button id="dash" disabled>监控界面</button>
+      <button id="sendOne" class="g" disabled>发送文本帧</button>
+      <button id="clock" class="g" disabled>时钟模式</button>
+      <button id="auto" class="g" disabled>1Hz 轮播</button>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <button id="fill" class="g" disabled>整屏填充</button>
+      <button id="calib" class="g" disabled>校准图案</button>
+      <button id="bars" class="g" disabled>彩条</button>
+      <button id="rows" class="g" disabled>行序</button>
+      <button id="solid" class="g" disabled>纯色图</button>
+      <button id="half" class="g" disabled>上下半分</button>
+    </div>
+    <div class="row" style="margin-top:10px;border-top:1px solid #232b36;padding-top:10px">
+      <label>固件 .hex <input type="file" id="fwfile" accept=".hex" style="font-size:12px"></label>
+      <button id="flash" class="g" disabled>烧录固件</button>
+      <span id="fwstat" class="stat dim"></span>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <label>背景图 <input type="file" id="bgfile" accept="image/*" style="font-size:12px"></label>
+      <button id="uploadbg" class="g" disabled>上传背景</button>
+      <span id="bgstat" class="stat dim"></span>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div style="font-size:12px;color:#9aa7b6;margin-bottom:6px">日志</div>
+    <div id="log"></div>
+  </div>
+</div>
+
+<script>
+const W=320,H=172;
+const cv=document.getElementById('cv'),ctx=cv.getContext('2d');
+const logEl=document.getElementById('log');
+let lastMsg='',lastCount=0,lastNode=null;
+function log(s,cls){
+  if(s===lastMsg&&lastNode){lastCount++;lastNode.textContent=s+'  (x'+lastCount+')';logEl.scrollTop=logEl.scrollHeight;return;}
+  lastMsg=s;lastCount=1;
+  const d=document.createElement('div');if(cls)d.className=cls;d.textContent=s;
+  logEl.appendChild(d);lastNode=d;
+  while(logEl.childElementCount>300)logEl.removeChild(logEl.firstChild);
+  logEl.scrollTop=logEl.scrollHeight;
+}
+
+let port=null,writer=null,reader=null,seq=0,pending=null,rxbuf=new Uint8Array(0);
+let timer=null,clockMode=false,busy=false,mode='text';
+
+/* ---------- CRC ---------- */
+const CRC32T=(()=>{const t=new Uint32Array(256);for(let i=0;i<256;i++){let c=i;for(let k=0;k<8;k++)c=(c&1)?(0xEDB88320^(c>>>1)):(c>>>1);t[i]=c>>>0;}return t;})();
+function crc32(b){let c=0xFFFFFFFF;for(let i=0;i<b.length;i++)c=CRC32T[(c^b[i])&0xFF]^(c>>>8);return (c^0xFFFFFFFF)>>>0;}
+function crc16(b){let c=0xFFFF;for(let i=0;i<b.length;i++){c^=b[i]<<8;for(let k=0;k<8;k++)c=(c&0x8000)?((c<<1)^0x1021)&0xFFFF:(c<<1)&0xFFFF;}return c;}
+
+/* ---------- frames ---------- */
+function build(s,cmd,pl){
+  const len=pl.length,b=new Uint8Array(9+len+2);
+  b[0]=0xA5;b[1]=0x5A;b[2]=1;b[3]=0;b[4]=s;
+  b[5]=cmd&0xFF;b[6]=(cmd>>8)&0xFF;b[7]=len&0xFF;b[8]=(len>>8)&0xFF;
+  b.set(pl,9);
+  const c=crc16(b.subarray(2,9+len));
+  b[9+len]=c&0xFF;b[10+len]=c>>8;
+  return b;
+}
+
+async function cmd(c,pl=new Uint8Array(0),timeout=500,retries=2){
+  if(!writer) throw new Error('未连接');
+  const s=seq;seq=(seq+1)&0xFF;
+  for(let t=0;t<=retries;t++){
+    const buf=build(s,c,pl);
+    const p=new Promise((res,rej)=>{
+      const tm=setTimeout(()=>{pending=null;rej(new Error('timeout'));},timeout);
+      pending={seq:s,res,rej,tm};
+    });
+    await writer.write(buf);
+    try{ return await p; }catch(e){ if(t===retries) throw e; log('重传 '+c.toString(16)+' seq='+s,'warn'); }
+  }
+}
+
+function feed(bytes){
+  const nb=new Uint8Array(rxbuf.length+bytes.length);
+  nb.set(rxbuf);nb.set(bytes,rxbuf.length);rxbuf=nb;
+  for(;;){
+    if(rxbuf.length<2)return;
+    if(rxbuf[0]!==0xA5||rxbuf[1]!==0x5A){rxbuf=rxbuf.subarray(1);continue;}
+    if(rxbuf.length<11)return;
+    const len=rxbuf[7]|(rxbuf[8]<<8);
+    if(rxbuf.length<9+len+2)return;
+    const crc=rxbuf[9+len]|(rxbuf[10+len]<<8);
+    const good=crc===crc16(rxbuf.subarray(2,9+len));
+    const flags=rxbuf[3],s=rxbuf[4],cmdId=rxbuf[5]|(rxbuf[6]<<8);
+    const payload=rxbuf.slice(9,9+len);
+    rxbuf=rxbuf.subarray(9+len+2);
+    if(!good){log('CRC 错','err');continue;}
+    if(flags&1){
+      if(pending&&pending.seq===s){clearTimeout(pending.tm);const p=pending;pending=null;p.res({status:payload[0],data:payload.subarray(1)});}
+      else if(document.getElementById('dbg').checked)
+        log('RX cmd='+cmdId.toString(16)+' seq='+s+' st='+payload[0],'dim');
+    }else log('EVENT cmd='+cmdId.toString(16),'warn');
+  }
+}
+
+/* ---------- drawing ---------- */
+function rr(g,x,y,w,h,r){g.beginPath();g.moveTo(x+r,y);g.arcTo(x+w,y,x+w,y+h,r);g.arcTo(x+w,y+h,x,y+h,r);g.arcTo(x,y+h,x,y,r);g.arcTo(x,y,x+w,y,r);g.closePath();}
+
+function drawDashboard(){
+  const g=ctx;
+  g.fillStyle='#090c11';g.fillRect(0,0,W,H);
+  g.textBaseline='alphabetic';g.textAlign='left';
+  g.fillStyle='#e8eef5';g.font='bold 13px "Microsoft YaHei"';g.fillText('HANKS-MFF',8,18);
+  g.fillStyle='#3cc8ff';g.font='12px "Microsoft YaHei"';g.textAlign='right';g.fillText('192.168.1.30',312,18);
+
+  function panel(x,y,w,h,label,right,big,unit,color,right2){
+    g.fillStyle='#12171f';g.strokeStyle='#222b38';g.lineWidth=1;rr(g,x,y,w,h,7);g.fill();g.stroke();
+    g.textAlign='left';g.fillStyle='#768294';g.font='10px "Microsoft YaHei"';g.fillText(label,x+9,y+14);
+    g.textAlign='right';g.fillStyle='#aab6c4';g.fillText(right,x+w-9,y+14);
+    g.textAlign='left';g.fillStyle=color;g.font='bold 26px "Microsoft YaHei"';g.fillText(big,x+9,y+46);
+    if(unit){const bw=g.measureText(big).width;g.fillStyle='#768294';g.font='9px "Microsoft YaHei"';g.fillText(unit,x+11+bw,y+47);}
+    g.textAlign='right';g.fillStyle='#aab6c4';g.font='10px "Microsoft YaHei"';g.fillText(right2,x+w-9,y+47);
+    g.textAlign='left';
+  }
+
+  panel(6,28,151,58,'CPU · 8 Core','32℃','1%','','#46d282','1.1GHz');
+  panel(163,28,151,58,'MEM 2666','1.1/31.2G','3%','','#3cc8ff','free 30.1G');
+
+  g.fillStyle='#12171f';g.strokeStyle='#222b38';rr(g,6,91,151,58,7);g.fill();g.stroke();
+  g.fillStyle='#768294';g.font='10px "Microsoft YaHei"';g.textAlign='left';g.fillText('NET · eno1 1G',15,105);
+  g.fillStyle='#46d282';g.font='bold 17px "Microsoft YaHei"';g.fillText('↑ 0.2K',15,133);
+  g.fillStyle='#3cc8ff';g.textAlign='right';g.fillText('↓ 0.2K',148,133);
+
+  g.fillStyle='#12171f';g.strokeStyle='#222b38';rr(g,163,91,151,58,7);g.fill();g.stroke();
+  g.textAlign='left';g.fillStyle='#768294';g.font='10px "Microsoft YaHei"';g.fillText('IO · nvme0',172,105);
+  g.textAlign='right';g.fillStyle='#aab6c4';g.fillText('iowait 0.2%',305,105);
+  g.textAlign='left';g.fillStyle='#f5be46';g.font='bold 16px "Microsoft YaHei"';g.fillText('R 0.1M',172,133);
+  g.textAlign='right';g.fillText('W 0.3M',305,133);
+
+  g.textAlign='left';g.fillStyle='#46d282';g.font='9px "Microsoft YaHei"';g.fillText('ET 4 peers',8,164);
+  g.fillStyle='#aab6c4';g.fillText('· nas 0.99ms',72,164);
+  g.fillText('· DiskTop 1.13ms',152,164);
+  g.textAlign='right';g.fillStyle='#f5be46';g.fillText('vertiv 37ms',312,164);
+  g.textAlign='left';
+}
+
+function draw(){
+  ctx.fillStyle='#000';ctx.fillRect(0,0,W,H);
+  if(mode==='dash'){drawDashboard();return;}
+  if(mode==='solid'){ctx.fillStyle=document.getElementById('col').value;ctx.fillRect(0,0,W,H);return;}
+  if(mode==='half'){ctx.fillStyle='#ff0000';ctx.fillRect(0,0,W,H/2);ctx.fillStyle='#0000ff';ctx.fillRect(0,H/2,W,H/2);return;}
+  if(mode==='bars'){
+    const c=['#ff0000','#00ff00','#0000ff','#ffff00','#ff00ff','#00ffff','#ffffff','#000000'];
+    const bh=Math.floor(H/8);
+    for(let i=0;i<8;i++){ctx.fillStyle=c[i];ctx.fillRect(0,i*bh,W,bh);}
+    return;
+  }
+  if(mode==='rows'){
+    const n=17;
+    for(let i=0;i<n;i++){const v=Math.round(i*255/(n-1));ctx.fillStyle='rgb('+v+',0,'+(255-v)+')';ctx.fillRect(0,Math.floor(i*H/n),W,Math.ceil(H/n));}
+    ctx.fillStyle='#fff';ctx.font='16px monospace';ctx.fillText('ROW 0 TOP',4,18);
+    return;
+  }
+  if(mode==='clock'){
+    const d=new Date();
+    const t=String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')+':'+String(d.getSeconds()).padStart(2,'0');
+    ctx.fillStyle='#00e0ff';ctx.font='bold 64px Consolas,monospace';ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillText(t,W/2,H/2-8);
+    ctx.font='15px Consolas,monospace';ctx.fillStyle='#7d8b9c';ctx.fillText(d.toLocaleDateString(),W/2,H-24);
+    ctx.textAlign='left';ctx.textBaseline='alphabetic';
+    return;
+  }
+  ctx.fillStyle=document.getElementById('col').value;
+  ctx.font='bold 34px "Microsoft YaHei",sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
+  ctx.fillText(document.getElementById('txt').value,W/2,H/2);
+  ctx.textAlign='left';ctx.textBaseline='alphabetic';
+  ctx.strokeStyle='#1f6feb';ctx.lineWidth=2;ctx.strokeRect(1,1,W-2,H-2);
+}
+
+function toRGB565(img){
+  const p=img.data,out=new Uint8Array(W*H*2);let o=0;
+  for(let i=0;i<p.length;i+=4){
+    const c=((p[i]>>3)<<11)|((p[i+1]>>2)<<5)|(p[i+2]>>3);
+    out[o++]=(c>>8)&0xFF;out[o++]=c&0xFF;
+  }
+  return out;
+}
+
+async function sendFrame(){
+  if(!writer||busy)return;
+  busy=true;
+  try{
+    const t0=performance.now();
+    draw();
+    const img=ctx.getImageData(0,0,W,H);
+    const px=toRGB565(img);
+    log('pixel0 RGB565=0x'+(((px[0]<<8)|px[1]).toString(16).padStart(4,'0')),'dim');
+
+    const b=new Uint8Array(9);
+    b[4]=W&0xFF;b[5]=W>>8;b[6]=H&0xFF;b[7]=H>>8;
+    let r=await cmd(0x0100,b);
+    if(r.status!==0){log('BEGIN 失败 '+r.status,'err');return;}
+
+    const CH=1024;
+    for(let off=0;off<px.length;off+=CH){
+      const part=px.subarray(off,Math.min(off+CH,px.length));
+      r=await cmd(0x0101,part);
+      if(r.status!==0){log('DATA off='+off+' status='+r.status,'err');return;}
+    }
+    const hostCrc=crc32(px);
+    r=await cmd(0x0102);
+    let devCrc=null;
+    if(r.data&&r.data.length>=4)devCrc=(r.data[0]|(r.data[1]<<8)|(r.data[2]<<16)|(r.data[3]<<24))>>>0;
+    const ok=(r.status===0)&&devCrc===hostCrc;
+    const ms=Math.round(performance.now()-t0);
+    log('帧完成 '+px.length+'B '+ms+'ms host='+hostCrc.toString(16)+' dev='+(devCrc===null?'?':devCrc.toString(16))+' '+(ok?'✔ 一致':'✘ 不一致'),ok?'ok':'err');
+  }catch(e){log('发送失败: '+e.message,'err');}
+  finally{busy=false;}
+}
+
+/* ---------- serial ---------- */
+async function attach(){
+  await port.open({baudRate:115200});
+  writer=port.writable.getWriter();
+  reader=port.readable.getReader();
+  (async()=>{try{for(;;){const {value,done}=await reader.read();if(done)break;if(value&&value.length){if(document.getElementById('dbg').checked)log('RAW '+value.length+'B','dim');feed(value);}}}catch(e){}})();
+  document.getElementById('stat').textContent='已连接';
+  document.getElementById('stat').className='stat ok';
+  document.getElementById('connect').disabled=true;
+  document.getElementById('reconnect').disabled=true;
+  document.querySelectorAll('button').forEach(b=>{if(b.id!=='connect'&&b.id!=='reconnect')b.disabled=false;});
+  try{await doInfo();}catch(e){log('INFO 超时','err');}
+}
+
+async function detach(){
+  if(timer){clearInterval(timer);timer=null;}
+  try{if(reader){await reader.cancel();reader.releaseLock();reader=null;}}catch(e){}
+  try{if(writer){writer.releaseLock();writer=null;}}catch(e){}
+  try{if(port&&!port.closed){await port.close();}}catch(e){}
+}
+
+document.getElementById('connect').onclick=async()=>{
+  try{
+    port=await navigator.serial.requestPort();
+    await attach();
+  }catch(e){log('连接失败: '+e.message,'err');}
+};
+
+document.getElementById('reconnect').onclick=async()=>{
+  try{
+    if(!port){log('还没有授权过端口，请先点"连接设备"','err');return;}
+    await detach();
+    await new Promise(r=>setTimeout(r,300));
+    await attach();
+  }catch(e){log('重新连接失败: '+e.message,'err');}
+};
+
+document.getElementById('disconnect').onclick=async()=>{
+  await detach();
+  port=null;
+  document.getElementById('stat').textContent='未连接';
+  document.getElementById('stat').className='stat dim';
+  document.getElementById('connect').disabled=false;
+  document.querySelectorAll('button').forEach(b=>{if(b.id!=='connect')b.disabled=true;});
+};
+
+async function doInfo(){
+  const r=await cmd(0x0001);
+  if(r.status!==0){log('INFO status='+r.status,'err');return;}
+  const d=r.data;
+  if(d[0]===0xB0){
+    const appA=(d[2]|(d[3]<<8)|(d[4]<<16)|(d[5]<<24))>>>0;
+    const appE=(d[6]|(d[7]<<8)|(d[8]<<16)|(d[9]<<24))>>>0;
+    log('Bootloader v'+d[1]+'  app 0x'+appA.toString(16)+'..0x'+appE.toString(16)+'  page='+(d[10]|(d[11]<<8)),'warn');
+  }else{
+    log('App v'+d[0]+'.'+d[1]+'  '+(d[2]|(d[3]<<8))+'x'+(d[4]|(d[5]<<8))+'  max='+(d[6]|(d[7]<<8))+'  caps=0x'+d[8].toString(16),'ok');
+  }
+}
+
+/* ---------- buttons ---------- */
+document.getElementById('info').onclick=()=>doInfo().catch(()=>log('INFO 超时','err'));
+document.getElementById('ping').onclick=async()=>{
+  try{const r=await cmd(0x0002,new TextEncoder().encode('ping'));log('PONG: '+new TextDecoder().decode(r.data),'ok');}
+  catch(e){log('PING 超时','err');}
+};
+document.getElementById('dash').onclick=()=>{mode='dash';sendFrame();};
+document.getElementById('sendOne').onclick=()=>{mode='text';sendFrame();};
+document.getElementById('clock').onclick=()=>{mode='clock';sendFrame();};
+document.getElementById('bars').onclick=()=>{mode='bars';sendFrame();};
+document.getElementById('rows').onclick=()=>{mode='rows';sendFrame();};
+document.getElementById('solid').onclick=()=>{mode='solid';sendFrame();};
+document.getElementById('half').onclick=()=>{mode='half';sendFrame();};
+document.getElementById('fill').onclick=async()=>{
+  const c=document.getElementById('col').value;
+  const r=parseInt(c.substr(1,2),16),g=parseInt(c.substr(3,2),16),b=parseInt(c.substr(5,2),16);
+  const v=((r>>3)<<11)|((g>>2)<<5)|(b>>3);
+  try{const rr2=await cmd(0x0103,new Uint8Array([v&0xFF,(v>>8)&0xFF]));log('FILL '+c+' status='+rr2.status,'ok');}
+  catch(e){log('FILL 超时','err');}
+};
+document.getElementById('calib').onclick=async()=>{
+  const rects=[[0,0,24,24,0xF800],[296,0,24,24,0x07E0],[0,148,24,24,0x001F],[296,148,24,24,0xFFE0],
+               [0,0,320,1,0xFFFF],[0,171,320,1,0xFFFF],[0,0,1,172,0xFFFF],[319,0,1,172,0xFFFF],[120,60,80,40,0xF81F]];
+  for(const r of rects){
+    const b=new Uint8Array(10);
+    b[0]=r[0]&0xFF;b[1]=r[0]>>8;b[2]=r[1]&0xFF;b[3]=r[1]>>8;
+    b[4]=r[2]&0xFF;b[5]=r[2]>>8;b[6]=r[3]&0xFF;b[7]=r[3]>>8;b[8]=r[4]&0xFF;b[9]=r[4]>>8;
+    try{await cmd(0x0104,b);}catch(e){log('校准失败','err');return;}
+  }
+  log('校准图案已发送','ok');
+};
+document.getElementById('auto').onclick=()=>{
+  if(timer){clearInterval(timer);timer=null;document.getElementById('auto').textContent='1Hz 轮播';return;}
+  timer=setInterval(sendFrame,1000);
+  document.getElementById('auto').textContent='停止轮播';
+};
+
+/* ---------- firmware flashing (bootloader protocol) ---------- */
+function parseHex(txt){
+  const map={}; let max=0, min=1e9;
+  txt.split(/\r?\n/).forEach(line=>{
+    line=line.trim();
+    if(line.charAt(0)!==':')return;
+    const b=[];
+    for(let i=1;i<line.length;i+=2)b.push(parseInt(line.substr(i,2),16));
+    const n=b[0],addr=(b[1]<<8)|b[2],type=b[3];
+    if(type===0){
+      for(let i=0;i<n;i++)map[addr+i]=b[4+i];
+      if(addr<min)min=addr;
+      if(addr+n>max)max=addr+n;
+    }
+  });
+  if(min>max)throw new Error('HEX has no data');
+  const img=new Uint8Array(max-min);
+  for(let a=min;a<max;a++)img[a-min]=(map[a]===undefined?0xFF:map[a]);
+  return {base:min,img};
+}
+
+async function flashFirmware(){
+  const f=document.getElementById('fwfile').files[0];
+  if(!f){log('请先选择 .hex 文件','err');return;}
+  const txt=await f.text();
+  const parsed=parseHex(txt);
+  if(parsed.base!==0x3000){log('固件起始地址应为 0x3000，实际 0x'+parsed.base.toString(16),'err');return;}
+  const pages=Math.ceil(parsed.img.length/256);
+  const padded=new Uint8Array(pages*256); padded.fill(0xFF); padded.set(parsed.img);
+  const crc=crc32(padded);
+  const st=document.getElementById('fwstat');
+  log('固件 '+parsed.img.length+'B / '+pages+' 页 / crc32='+crc.toString(16),'dim');
+  st.textContent='擦除中…';
+  try{
+    let r=await cmd(0x0010,new Uint8Array(0),20000,0);
+    if(r.status!==0){log('擦除失败 status='+r.status,'err');return;}
+    for(let p=0;p<pages;p++){
+      const addr=0x3000+p*256;
+      const pl=new Uint8Array(260);
+      pl[0]=addr&0xFF;pl[1]=(addr>>8)&0xFF;pl[2]=(addr>>16)&0xFF;pl[3]=(addr>>24)&0xFF;
+      pl.set(padded.subarray(p*256,(p+1)*256),4);
+      r=await cmd(0x0011,pl,1500,1);
+      if(r.status!==0){log('写入失败 page='+p+' status='+r.status,'err');return;}
+      if(p%16===0){st.textContent='写入 '+p+'/'+pages;}
+    }
+    st.textContent='校验中…';
+    const fin=new Uint8Array(8);
+    fin[0]=padded.length&0xFF;fin[1]=(padded.length>>8)&0xFF;
+    fin[2]=(padded.length>>16)&0xFF;fin[3]=(padded.length>>24)&0xFF;
+    fin[4]=crc&0xFF;fin[5]=(crc>>8)&0xFF;fin[6]=(crc>>16)&0xFF;fin[7]=(crc>>24)&0xFF;
+    r=await cmd(0x0012,fin,3000,0);
+    if(r.status!==0){log('校验失败 status='+r.status,'err');return;}
+    log('写入成功，正在启动新固件…','ok');
+    st.textContent='完成';
+    await cmd(0x0013,new Uint8Array(0),800,0).catch(()=>{});
+  }catch(e){log('烧录失败: '+e.message,'err');}
+}
+document.getElementById('flash').onclick=flashFirmware;
+
+/* ---------- background upload (332 palette + RLE) ---------- */
+function pix332(r,g,b){ return ((r>>5)<<5) | ((g>>5)<<2) | (b>>6); }
+
+function rle332(idx){
+  const out=[];
+  let i=0;
+  while(i<idx.length){
+    const v=idx[i];
+    let n=1;
+    while(i+n<idx.length && idx[i+n]===v && n<255) n++;
+    out.push(n,v);
+    i+=n;
+  }
+  return new Uint8Array(out);
+}
+
+async function uploadBackground(){
+  const f=document.getElementById('bgfile').files[0];
+  const st=document.getElementById('bgstat');
+  if(!f){log('请先选择背景图片','err');return;}
+  const im=new Image();
+  im.src=URL.createObjectURL(f);
+  try{ await im.decode(); }catch(e){ log('图片解码失败','err'); return; }
+
+  ctx.fillStyle='#000';ctx.fillRect(0,0,W,H);
+  const s=Math.max(W/im.width,H/im.height);
+  const dw=im.width*s, dh=im.height*s;
+  ctx.drawImage(im,(W-dw)/2,(H-dh)/2,dw,dh);
+
+  const d=ctx.getImageData(0,0,W,H).data;
+  const idx=new Uint8Array(W*H);
+  for(let i=0,j=0;i<d.length;i+=4,j++) idx[j]=pix332(d[i],d[i+1],d[i+2]);
+
+  const rle=rle332(idx);
+  const total=16+rle.length;
+  if(total>0x7000){ log('压缩后 '+total+'B，超过 28KB 上限，换张颜色简单的图','err'); return; }
+  log('背景 320x172, RLE '+rle.length+'B, 总计 '+total+'B','dim');
+
+  const buf=new Uint8Array(Math.ceil(total/256)*256);
+  buf.fill(0xFF);
+  const dv=new DataView(buf.buffer);
+  dv.setUint32(0,0x4732534D,true);   /* 'MS2G' */
+  dv.setUint16(4,W,true); dv.setUint16(6,H,true); dv.setUint16(8,0,true);
+  dv.setUint32(12,rle.length,true);
+  buf.set(rle,16);
+  dv.setUint32(16+rle.length,0,true); /* placeholder, crc over rle only */
+
+  const crc=crc32(rle);
+  dv.setUint32(12+4,crc,true);        /* crc at offset 16? fix below */
+  /* header: magic,w,h,fmt,len(u32 @12),crc(u32 @16) = 20 bytes; keep 16-byte layout:
+     magic(0) w(4) h(6) fmt(8) pad(10) len(12) crc(16) -> 20 bytes. Use 32-byte header. */
+  const HDR=32;
+  const total2=HDR+rle.length;
+  const buf2=new Uint8Array(Math.ceil(total2/256)*256); buf2.fill(0xFF);
+  const v=new DataView(buf2.buffer);
+  v.setUint32(0,0x4732534D,true);
+  v.setUint16(4,W,true); v.setUint16(6,H,true); v.setUint16(8,0,true);
+  v.setUint32(12,rle.length,true);
+  v.setUint32(16,crc,true);
+  buf2.set(rle,HDR);
+
+  st.textContent='写入 0/'+Math.ceil(buf2.length/256);
+  const pages=buf2.length/256;
+  try{
+    for(let p=0;p<pages;p++){
+      const addr=0x9000+p*256;
+      const pl=new Uint8Array(260);
+      pl[0]=addr&0xFF;pl[1]=(addr>>8)&0xFF;pl[2]=(addr>>16)&0xFF;pl[3]=0;
+      pl.set(buf2.subarray(p*256,(p+1)*256),4);
+      const r=await cmd(0x0020,pl,1500,1);
+      if(r.status!==0){log('背景写入失败 page='+p+' status='+r.status,'err');return;}
+      if(p%8===0)st.textContent='写入 '+p+'/'+pages;
+    }
+    const fin=new Uint8Array(8);
+    fin[0]=buf2.length&0xFF;fin[1]=(buf2.length>>8)&0xFF;fin[2]=(buf2.length>>16)&0xFF;fin[3]=0;
+    fin[4]=crc32(buf2)&0xFF;fin[5]=(crc32(buf2)>>8)&0xFF;fin[6]=(crc32(buf2)>>16)&0xFF;fin[7]=(crc32(buf2)>>24)&0xFF;
+    const r=await cmd(0x0021,fin,3000,0);
+    if(r.status!==0){log('背景校验失败 status='+r.status,'err');return;}
+    st.textContent='完成';
+    log('背景已写入，重启后生效','ok');
+  }catch(e){log('上传失败: '+e.message,'err');}
+}
+document.getElementById('uploadbg').onclick=uploadBackground;
+
+document.getElementById('selftest').onclick=async()=>{
+  try{
+    const r=await cmd(0x0022,new Uint8Array(0),4000,0);
+    const d=r.data;
+    log('自检 status='+r.status+' len='+d.length,r.status===0?'ok':'err');
+    if(d.length>=12){
+      const hx=(a,b)=>Array.from(d.slice(a,b)).map(x=>x.toString(16).padStart(2,'0')).join(' ');
+      log('  [A] 0xF400: erase='+d[0]+' statr=0x'+d[1].toString(16)+' rb=['+hx(2,6)+']',d[2]===0x5A?'ok':'err');
+      log('  [B] 0x9000: erase='+d[6]+' statr=0x'+d[7].toString(16)+' rb=['+hx(8,12)+']',d[8]===0x5A?'ok':'err');
+    }
+  }catch(e){log('Flash 自检超时','err');}
+};
+document.getElementById('echo').onclick=async()=>{
+  const pl=new Uint8Array(260);
+  for(let i=0;i<pl.length;i++) pl[i]=i&0xFF;
+  const c=crc32(pl);
+  try{
+    const r=await cmd(0x0023,pl,2000,0);
+    const d=r.data;
+    const devLen=d[0]|(d[1]<<8);
+    const devCrc=(d[2]|(d[3]<<8)|(d[4]<<16)|(d[5]<<24))>>>0;
+    log('回显: len='+devLen+' crc host='+c.toString(16)+' dev='+devCrc.toString(16),(devLen===260&&devCrc===c)?'ok':'err');
+  }catch(e){log('回显超时','err');}
+};
+document.getElementById('meta').onclick=async()=>{
+  try{
+    const r=await cmd(0x0024,new Uint8Array(0),2000,0);
+    const d=r.data, u=(i)=>((d[i]|(d[i+1]<<8)|(d[i+2]<<16)|(d[i+3]<<24))>>>0);
+    if(d.length>=40){
+      const wh=u(24), bw=wh&0xffff, bh=(wh>>>16)&0xffff;
+      log('meta: magic=0x'+u(0).toString(16)+' size='+u(4)+' crc=0x'+u(8).toString(16), u(0)===0x4232534d?'ok':'err');
+      log('flag=0x'+u(12).toString(16)+'  app0=0x'+u(16).toString(16)+' (低字节应为 6f)', (u(16)&0xff)===0x6f?'ok':'err');
+      log('bg: magic=0x'+u(20).toString(16)+' '+bw+'x'+bh+' fmt='+u(28)+' len='+u(32)+' crc=0x'+u(36).toString(16), u(20)===0x4732534d?'ok':'err');
+      if(d.length>=44){
+        const mk=u(40);
+        const map={0xaa:'跳转后连第一条指令都没执行（App 没进 main）',
+          0x11:'死在 main 入口/时钟',0x22:'死在 LCD 初始化',0x33:'死在 USB 初始化之前',
+          0x44:'USB 已起来，死在画背景',0x66:'背景画完，死在主循环前',0x55:'已进入主循环，App 正常',
+          0xaaaaaaaa:'跳转后连第一条指令都没执行（跳转失败）',
+          0xa1:'死在 la gp',0xa2:'死在 la sp',0xa3:'死在 .data 拷贝',0xa4:'死在 .bss 清零',
+          0xa5:'死在 csrw 0xbc0（流水线配置）',0xa6:'死在 csrw 0x804（硬件堆栈）',
+          0xa7:'死在 csrw mstatus',0xa8:'死在 csrw mtvec',
+          0xa9:'死在 SystemInit（时钟）',
+          0x11111111:'死在 main 入口/时钟',0x22222222:'死在 LCD 初始化',
+          0x33333333:'死在 USB 初始化之前',0x44444444:'USB 已初始化，死在画背景',
+          0x66666666:'背景已画完，死在主循环前',0x55555555:'已进入主循环，App 正常'};
+        log('boot mark=0x'+mk.toString(16)+'  → '+(map[mk]||'未知'), mk===0x55555555?'ok':'warn');
+      }
+    } else if(d.length>=4){
+      log('app marker=0x'+u(0).toString(16),'warn');
+    } else log('元数据长度异常: '+d.length,'err');
+  }catch(e){log('元数据读取超时','err');}
+};
+document.getElementById('runapp').onclick=async()=>{
+  try{ await cmd(0x0013,new Uint8Array(0),800,0); }catch(e){}
+  log('已发送 RUN：设备将跳转到 App，串口会消失，请重新连接','warn');
+  document.getElementById('stat').textContent='等待重连…';
+  document.getElementById('stat').className='stat warn';
+};
+document.getElementById('boot').onclick=async()=>{
+  try{ await cmd(0x00FF,new Uint8Array(0),600,0); }catch(e){}
+  log('已发送重启命令：设备将进入 Bootloader，串口会消失，请重新连接','warn');
+  document.getElementById('stat').textContent='等待重连…';
+  document.getElementById('stat').className='stat warn';
+};
+
+draw();
+log('MS2-Link v1：A5 5A | ver | flags | seq | cmd | len | payload | crc16','dim');
+</script>
+</body>
+</html>

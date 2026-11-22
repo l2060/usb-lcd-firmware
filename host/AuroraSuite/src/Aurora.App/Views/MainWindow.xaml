@@ -1,0 +1,752 @@
+<Window x:Class="Aurora.App.Views.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:Aurora.App.ViewModels"
+        Title="Aurora Suite · MSU2 调试工具" Height="760" Width="1180"
+        MinHeight="640" MinWidth="980"
+        Background="{StaticResource BgBrush}"
+        WindowStartupLocation="CenterScreen"
+        FontFamily="Microsoft YaHei UI">
+
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis" />
+        <Style x:Key="NavTabControl" TargetType="TabControl">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TabControl">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="186" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+
+                            <Border Grid.Column="0" Background="{StaticResource PanelBrush}"
+                                    BorderBrush="{StaticResource EdgeBrush}" BorderThickness="1"
+                                    CornerRadius="8" Padding="10,12">
+                                <StackPanel IsItemsHost="True" />
+                            </Border>
+
+                            <ContentPresenter Grid.Column="1" Margin="16,0,0,0"
+                                              ContentSource="SelectedContent" />
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="NavTabItem" TargetType="TabItem">
+            <Setter Property="Foreground" Value="{StaticResource SubTextBrush}" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TabItem">
+                        <Border x:Name="bd" Background="Transparent" CornerRadius="6" Padding="12,10" Margin="0,2">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="3" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Border x:Name="bar" Grid.Column="0" Background="Transparent" CornerRadius="2"
+                                        Width="3" Margin="0,0,10,0" />
+                                <ContentPresenter Grid.Column="1" ContentSource="Header" VerticalAlignment="Center" />
+                            </Grid>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="#182231" />
+                                <Setter TargetName="bar" Property="Background" Value="{StaticResource AccentBrush}" />
+                                <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="#141C27" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="KeyValue" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource SubTextBrush}" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Margin" Value="0,3" />
+        </Style>
+
+        <Style x:Key="Value" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Margin" Value="0,3" />
+            <Setter Property="FontFamily" Value="Consolas" />
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- header -->
+        <Border Grid.Row="0" Style="{StaticResource Card}" Padding="16,12" Margin="0,0,0,14">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                    <TextBlock Text="Aurora Suite" Style="{StaticResource H1}" />
+                    <TextBlock Text="MSU2_LITE · MS2-Link 调试与固件工具" Style="{StaticResource Caption}" Margin="0,2,0,0" />
+                </StackPanel>
+
+                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Border Background="#141C27" CornerRadius="14" Padding="12,6" Margin="0,0,10,0"
+                            BorderBrush="{StaticResource EdgeBrush}" BorderThickness="1">
+                        <StackPanel Orientation="Horizontal">
+                            <Ellipse Width="8" Height="8" VerticalAlignment="Center" Margin="0,0,8,0">
+                                <Ellipse.Style>
+                                    <Style TargetType="Ellipse">
+                                        <Setter Property="Fill" Value="{StaticResource MutedBrush}" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsConnected}" Value="True">
+                                                <Setter Property="Fill" Value="{StaticResource GoodBrush}" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Ellipse.Style>
+                            </Ellipse>
+                            <TextBlock Text="{Binding ModeText}" FontSize="12.5" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Border>
+
+                                        <ComboBox Width="150" ItemsSource="{Binding Ports}" SelectedItem="{Binding SelectedPort}"
+                              VerticalAlignment="Center" Margin="0,0,8,0" />
+                    <Button Content="刷新" Style="{StaticResource GhostButton}" Command="{Binding RefreshPortsCommand}"
+                            Margin="0,0,8,0" />
+                    <Button Content="连接" Style="{StaticResource PrimaryButton}" Command="{Binding ConnectCommand}"
+                            Margin="0,0,8,0" />
+                    <Button Content="断开" Style="{StaticResource GhostButton}" Command="{Binding DisconnectCommand}" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- body -->
+        <TabControl Grid.Row="1" Style="{StaticResource NavTabControl}">
+
+            <!-- overview -->
+            <TabItem Header="设备概览" Style="{StaticResource NavTabItem}">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <Border Grid.Row="0" Style="{StaticResource Card}">
+                        <StackPanel>
+                            <TextBlock Text="设备信息" Style="{StaticResource H2}" Margin="0,0,0,8" />
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="110" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+
+                                <TextBlock Grid.Row="0" Grid.Column="0" Text="当前设备" Style="{StaticResource KeyValue}" />
+                                <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding DeviceText}" Style="{StaticResource Value}" />
+
+                                <TextBlock Grid.Row="1" Grid.Column="0" Text="端口" Style="{StaticResource KeyValue}" />
+                                <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding SelectedPort}" Style="{StaticResource Value}" />
+
+                                <TextBlock Grid.Row="2" Grid.Column="0" Text="自动重连" Style="{StaticResource KeyValue}" />
+                                <CheckBox Grid.Row="2" Grid.Column="1" IsChecked="{Binding AutoConnect}"
+                                          Content="断开后快速后台重连" Foreground="{StaticResource SubTextBrush}"
+                                          VerticalAlignment="Center" />
+                            </Grid>
+                                                    <Separator Margin="0,10,0,8" Background="{StaticResource EdgeBrush}" />
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="96" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="屏幕方向" Style="{StaticResource Caption}"
+                                           VerticalAlignment="Center" />
+                                <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                    <ComboBox Width="84" ItemsSource="{Binding OrientationModes}"
+                                              SelectedItem="{Binding SelectedOrientation}" Margin="0,0,6,0"
+                                              ToolTip="断电保持" />
+                                    <Button Content="应用" Style="{StaticResource PrimaryButton}" Padding="12,4"
+                                            Command="{Binding ApplyOrientationCommand}" Margin="0,0,6,0" />
+                                    <Button Content="读取" Style="{StaticResource GhostButton}" Padding="10,4"
+                                            Command="{Binding ReadOrientationCommand}" />
+                                </StackPanel>
+                            </Grid>
+                            <TextBlock Text="{Binding OrientationInfo}" Style="{StaticResource Caption}" Margin="0,6,0,0" /></StackPanel>
+                    
+
+</Border>
+
+                    <Border Grid.Row="1" Style="{StaticResource Card}" Margin="0,14,0,0">
+
+                        <StackPanel>
+                            <TextBlock Text="当前模式可用操作" Style="{StaticResource H2}" Margin="0,0,0,8" />
+                            <TextBlock TextWrapping="Wrap">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock" BasedOn="{StaticResource Caption}">
+                                        <Setter Property="Text" Value="连接设备后，工具会根据设备处于 Bootloader 还是应用模式自动启用对应功能。" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsBootloader}" Value="True">
+                                                <Setter Property="Text" Value="Bootloader 模式：可烧录固件、上传开机背景、运行应用、Flash 自检与读取元数据。" />
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding IsApp}" Value="True">
+                                                <Setter Property="Text" Value="应用模式：可执行显示测试（填充 / 校准 / 彩条），并可一键重启进入 Bootloader。" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+
+                            <WrapPanel Margin="0,12,0,0">
+                                <Button Content="重启进 Bootloader" Style="{StaticResource GhostButton}"
+                                        Command="{Binding ToBootloaderCommand}" Margin="0,0,8,8" />
+                                <Button Content="运行应用" Style="{StaticResource PrimaryButton}"
+                                        Command="{Binding RunAppCommand}" Margin="0,0,8,8" />
+                                <Button Content="Flash 自检" Style="{StaticResource GhostButton}"
+                                        Command="{Binding SelfTestCommand}" Margin="0,0,8,8" />
+                                <Button Content="读取元数据" Style="{StaticResource GhostButton}"
+                                        Command="{Binding ReadMetaCommand}" Margin="0,0,8,8" />
+                            </WrapPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Grid.Row="2" Style="{StaticResource Card}" Margin="0,14,0,0">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <StackPanel>
+                                <TextBlock Text="诊断输出" Style="{StaticResource H2}" Margin="0,0,0,8" />
+                                <TextBlock Text="{Binding Diagnostics}" Style="{StaticResource Value}"
+                                           TextWrapping="Wrap" />
+                            </StackPanel>
+                        </ScrollViewer>
+                    </Border>
+                </Grid>
+            </TabItem>
+
+            <!-- firmware -->
+            <TabItem Header="固件升级" Style="{StaticResource NavTabItem}">
+                <StackPanel>
+                    <Border Style="{StaticResource Card}">
+                        <StackPanel>
+                            <TextBlock Text="选择固件" Style="{StaticResource H2}" Margin="0,0,0,8" />
+                            <TextBlock Text="{Binding FirmwareInfo}" Style="{StaticResource Value}" Margin="0,0,0,12" />
+                            <WrapPanel>
+                                <Button Content="选择 .hex 文件" Style="{StaticResource GhostButton}"
+                                        Click="OnPickFirmware" Margin="0,0,8,0" />
+                                <Button Content="开始烧录" Style="{StaticResource PrimaryButton}"
+                                        Command="{Binding FlashFirmwareCommand}" />
+                            </WrapPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource Card}" Margin="0,14,0,0">
+                        <StackPanel>
+                            <TextBlock Text="烧录流程" Style="{StaticResource H2}" Margin="0,0,0,10" />
+                            <TextBlock Style="{StaticResource Caption}" TextWrapping="Wrap" LineHeight="20">
+                                1. 若设备在应用模式，工具会自动发送命令切回 Bootloader；&#x0A;
+                                2. 擦除应用区 → 逐页写入（每页 256 字节，逐页读回校验）→ 整段 CRC32 校验；&#x0A;
+                                3. 校验通过后自动运行新固件，并重新连接设备。
+                            </TextBlock>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </TabItem>
+
+            <!-- background -->
+            <TabItem Header="开机背景" Style="{StaticResource NavTabItem}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="360" />
+                    </Grid.ColumnDefinitions>
+
+                    <Border Grid.Column="0" Style="{StaticResource Card}">
+                        <StackPanel>
+                            <TextBlock Text="背景预览（320 × 172）" Style="{StaticResource H2}" Margin="0,0,0,10" />
+                            <Border Background="Black" BorderBrush="{StaticResource EdgeBrush}"
+                                    BorderThickness="1" CornerRadius="6" Padding="0"
+                                    HorizontalAlignment="Left" VerticalAlignment="Top">
+                                <Image Source="{Binding BackgroundPreview}" Width="320" Height="172"
+                                       RenderOptions.BitmapScalingMode="NearestNeighbor" />
+                            </Border>
+                            <TextBlock Text="{Binding BackgroundInfo}" Style="{StaticResource Value}" Margin="0,12,0,0" />
+                            <TextBlock Style="{StaticResource Caption}" Margin="0,8,0,0" TextWrapping="Wrap"
+                                       Text="图片会自动裁切/缩放为 320×172，并转换为 3-3-2 调色板 + RLE 压缩后写入设备 Flash。" />
+                        </StackPanel>
+                    </Border>
+
+                    <Border Grid.Column="1" Style="{StaticResource Card}" Margin="14,0,0,0">
+                        <StackPanel>
+                            <TextBlock Text="上传到设备" Style="{StaticResource H2}" Margin="0,0,0,10" />
+                            <Button Content="选择图片…" Style="{StaticResource GhostButton}"
+                                    Click="OnPickBackground" Margin="0,0,0,10" HorizontalAlignment="Stretch" />
+
+                            <TextBlock Text="缩放方式" Style="{StaticResource Caption}" Margin="0,0,0,4" />
+                            <ComboBox ItemsSource="{Binding ScaleModes}" SelectedItem="{Binding ScaleMode}"
+                                      Margin="0,0,0,10" />
+
+                                                        <Button Content="上传到 Bootloader（开机图）" Style="{StaticResource GhostButton}"
+                                    Command="{Binding UploadBackgroundCommand}" Margin="0,0,0,12"
+                                    HorizontalAlignment="Stretch" />
+
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </TabItem>
+
+            <!-- tools -->
+            <TabItem Header="应用背景" Style="{StaticResource NavTabItem}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="340" />
+                    </Grid.ColumnDefinitions>
+
+                    <Border Grid.Column="0" Style="{StaticResource Card}">
+                        <StackPanel>
+                            <TextBlock Text="APP 背景预览（320 × 172）" Style="{StaticResource H2}" Margin="0,0,0,10" />
+                            <Border Background="Black" BorderBrush="{StaticResource EdgeBrush}" BorderThickness="1"
+                                    CornerRadius="6" HorizontalAlignment="Left">
+                                <Image Source="{Binding BackgroundPreview}" Width="320" Height="172"
+                                       RenderOptions.BitmapScalingMode="NearestNeighbor" />
+                            </Border>
+                            <TextBlock Text="{Binding AppImageInfo}" Style="{StaticResource Value}" Margin="0,12,0,0" />
+                            <TextBlock Style="{StaticResource Caption}" Margin="0,8,0,0" TextWrapping="Wrap"
+                                       Text="存放于设备外部 Flash（0x7F0000），与 Bootloader 开机图互不影响。开机自动显示；无图时整屏白色。" />
+                        </StackPanel>
+                    </Border>
+
+                    <Border Grid.Column="1" Style="{StaticResource Card}" Margin="14,0,0,0">
+                        <StackPanel>
+                            <TextBlock Text="APP 背景操作" Style="{StaticResource H2}" Margin="0,0,0,10" />
+
+                            <Button Content="选择图片…" Style="{StaticResource GhostButton}"
+                                    Click="OnPickBackground" Margin="0,0,0,10" HorizontalAlignment="Stretch" />
+
+                            <TextBlock Text="缩放方式" Style="{StaticResource Caption}" Margin="0,0,0,4" />
+                            <ComboBox ItemsSource="{Binding ScaleModes}" SelectedItem="{Binding ScaleMode}"
+                                      Margin="0,0,0,10" />
+
+                            <Button Content="上传到设备（外部 Flash）" Style="{StaticResource PrimaryButton}"
+                                    Command="{Binding UploadToAppCommand}" Margin="0,0,0,8"
+                                    HorizontalAlignment="Stretch" />
+
+                            <Separator Margin="0,6,0,10" Background="{StaticResource EdgeBrush}" />
+
+                            <Button Content="读取 APP 图头" Style="{StaticResource GhostButton}"
+                                    Command="{Binding ReadAppImageCommand}" Margin="0,0,0,8"
+                                    HorizontalAlignment="Stretch" />
+                            <Button Content="重绘底图" Style="{StaticResource GhostButton}"
+                                    Command="{Binding RedrawBackgroundCommand}" HorizontalAlignment="Stretch" />
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </TabItem>
+
+            <TabItem Header="流式推送" Style="{StaticResource NavTabItem}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="330" />
+                    </Grid.ColumnDefinitions>
+
+                    <Border Grid.Column="0" Style="{StaticResource Card}">
+                        <StackPanel>
+                            <TextBlock Text="实时画面（320 × 172）" Style="{StaticResource H2}" Margin="0,0,0,10" />
+                            <Border Background="Black" BorderBrush="{StaticResource EdgeBrush}" BorderThickness="1"
+                                    CornerRadius="6" HorizontalAlignment="Left">
+                                <Image Source="{Binding StreamPreview}" Width="320" Height="172"
+                                       RenderOptions.BitmapScalingMode="NearestNeighbor" />
+                            </Border>
+                            <TextBlock Text="{Binding StreamStats}" Style="{StaticResource Value}" Margin="0,12,0,0" />
+                            <TextBlock Style="{StaticResource Caption}" Margin="0,8,0,0" TextWrapping="Wrap"
+                                       Text="开始时先下发一帧整屏，之后每帧只推送中间的变化区域（DISP_BLIT），因此刷新延迟远低于整屏传输。" />
+                        </StackPanel>
+                    </Border>
+
+                    <Border Grid.Column="1" Style="{StaticResource Card}" Margin="14,0,0,0">
+                        <StackPanel>
+                            <TextBlock Text="推送控制" Style="{StaticResource H2}" Margin="0,0,0,10" />
+                            <CheckBox Content="投影屏幕（把桌面实时推到设备）" IsChecked="{Binding ProjectScreen}"
+                                      Margin="0,0,0,8" Foreground="{StaticResource SubTextBrush}" />
+
+                            <TextBlock Text="投影颜色模式" Style="{StaticResource Caption}" Margin="0,0,0,4" />
+                            <ComboBox ItemsSource="{Binding ProjectionColorModes}" SelectedItem="{Binding ProjectionColorMode}"
+                                      Padding="6,5" Margin="0,0,0,10" />
+
+                            <Button Content="开始推送" Style="{StaticResource PrimaryButton}"
+                                    Command="{Binding StartStreamCommand}" Margin="0,0,0,8"
+                                    HorizontalAlignment="Stretch" />
+                            <Button Content="停止" Style="{StaticResource GhostButton}"
+                                    Command="{Binding StopStreamCommand}" Margin="0,0,0,12"
+                                    HorizontalAlignment="Stretch" />
+
+                            <TextBlock Text="间隔（毫秒）" Style="{StaticResource Caption}" Margin="0,0,0,4" />
+                            <TextBox Text="{Binding StreamIntervalMs, UpdateSourceTrigger=PropertyChanged}" Padding="6,5"
+                                     Background="#141B24" Foreground="{StaticResource TextBrush}"
+                                     BorderBrush="{StaticResource EdgeBrush}" FontFamily="Consolas" Margin="0,0,0,10" />
+
+                            <TextBlock Style="{StaticResource Caption}" TextWrapping="Wrap" LineHeight="19"
+                                       Text="需要设备处于应用模式。每帧耗时会在左侧实时显示（编码字节数 + 设备往返时间）。" />
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </TabItem>
+
+            <TabItem Header="画面调试" Style="{StaticResource NavTabItem}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="330" />
+                    </Grid.ColumnDefinitions>
+
+                    <Border Grid.Column="0" Style="{StaticResource Card}">
+                        <StackPanel>
+                            <TextBlock Text="画面预览（320 × 172）" Style="{StaticResource H2}" Margin="0,0,0,10" />
+                            <Border Background="Black" BorderBrush="{StaticResource EdgeBrush}" BorderThickness="1"
+                                    CornerRadius="6" HorizontalAlignment="Left">
+                                <Image Source="{Binding DebugPreview}" Width="320" Height="172"
+                                       RenderOptions.BitmapScalingMode="NearestNeighbor" />
+                            </Border>
+                            <TextBlock Text="{Binding DebugInfo}" Style="{StaticResource Value}" Margin="0,12,0,0" />
+                            <TextBlock Style="{StaticResource Caption}" Margin="0,8,0,0" TextWrapping="Wrap"
+                                       Text="画面会在本机渲染成 RGB565，再用 RLE 压缩下发；设备回传实际像素数校验，任何一帧写错都会报错。" />
+                        </StackPanel>
+                    </Border>
+
+                    <Border Grid.Column="1" Style="{StaticResource Card}" Margin="14,0,0,0">
+                        <StackPanel>
+                            <TextBlock Text="发送调试画面" Style="{StaticResource H2}" Margin="0,0,0,10" />
+
+                            <TextBlock Text="文本内容" Style="{StaticResource Caption}" Margin="0,0,0,4" />
+                            <TextBox Text="{Binding DebugText, UpdateSourceTrigger=PropertyChanged}" Padding="6,5"
+                                     Background="#141B24" Foreground="{StaticResource TextBrush}"
+                                     BorderBrush="{StaticResource EdgeBrush}" Margin="0,0,0,8" />
+
+                            <TextBlock Text="颜色（#RRGGBB）" Style="{StaticResource Caption}" Margin="0,0,0,4" />
+                            <TextBox Text="{Binding DebugColor, UpdateSourceTrigger=PropertyChanged}" Padding="6,5"
+                                     Background="#141B24" Foreground="{StaticResource TextBrush}"
+                                     BorderBrush="{StaticResource EdgeBrush}" FontFamily="Consolas" Margin="0,0,0,10" />
+
+                            <Button Content="发送文本帧" Style="{StaticResource PrimaryButton}"
+                                    Command="{Binding SendTextFrameCommand}" Margin="0,0,0,8"
+                                    HorizontalAlignment="Stretch" />
+                            <Button Content="时钟模式" Style="{StaticResource GhostButton}"
+                                    Command="{Binding SendClockFrameCommand}" Margin="0,0,0,8"
+                                    HorizontalAlignment="Stretch" />
+
+                            <UniformGrid Columns="2" Margin="0,2,0,0">
+                                <Button Content="彩条" Style="{StaticResource GhostButton}"
+                                        Command="{Binding SendBarsCommand}" Margin="0,0,6,6" />
+                                <Button Content="行序" Style="{StaticResource GhostButton}"
+                                        Command="{Binding SendRowsCommand}" Margin="0,0,0,6" />
+                                <Button Content="纯色" Style="{StaticResource GhostButton}"
+                                        Command="{Binding SendSolidCommand}" Margin="0,0,6,0" />
+                                <Button Content="上下半分" Style="{StaticResource GhostButton}"
+                                        Command="{Binding SendHalfCommand}" />
+                            </UniformGrid>
+
+                            <Separator Margin="0,14,0,10" Background="{StaticResource EdgeBrush}" />
+                            <TextBlock Text="图形测试（设备端绘制）" Style="{StaticResource Caption}" Margin="0,0,0,6" />
+                            <UniformGrid Columns="2" Margin="0,0,0,8">
+                                <Button Content="圆角卡片" Style="{StaticResource GhostButton}"
+                                        Command="{Binding DrawCardCommand}" Margin="0,0,6,6" />
+                                <Button Content="圆环" Style="{StaticResource GhostButton}"
+                                        Command="{Binding DrawRingCommand}" Margin="0,0,0,6" />
+                                <Button Content="粗线" Style="{StaticResource GhostButton}"
+                                        Command="{Binding DrawLineCommand}" Margin="0,0,6,0" />
+                                <Button Content="填充矩形" Style="{StaticResource GhostButton}"
+                                        Command="{Binding DrawFillRectCommand}" />
+                            </UniformGrid>
+
+                            <Button Content="整屏填充" Style="{StaticResource GhostButton}"
+                                    Command="{Binding FillCommand}" Margin="0,0,0,8" HorizontalAlignment="Stretch" />
+                            <Button Content="校准图案" Style="{StaticResource GhostButton}"
+                                    Command="{Binding CalibrationCommand}" HorizontalAlignment="Stretch" />
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </TabItem>
+
+            <!-- log -->
+            <TabItem Header="字库烘焙" Style="{StaticResource NavTabItem}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="330" />
+                    </Grid.ColumnDefinitions>
+
+                    <Border Grid.Column="0" Style="{StaticResource Card}">
+                        <StackPanel>
+                            <TextBlock Text="预览（320 × 172，按 MCU 合成方式渲染）" Style="{StaticResource H2}" Margin="0,0,0,10" />
+                            <Border Background="Black" BorderBrush="{StaticResource EdgeBrush}" BorderThickness="1"
+                                    CornerRadius="6" HorizontalAlignment="Left">
+                                <Image Source="{Binding FontPreview}" Width="320" Height="172"
+                                       RenderOptions.BitmapScalingMode="NearestNeighbor" />
+                            </Border>
+                            <TextBlock Text="{Binding FontInfo}" Style="{StaticResource Value}" Margin="0,12,0,0" TextWrapping="Wrap" />
+                            <Separator Margin="0,14,0,10" Background="{StaticResource EdgeBrush}" />
+                            <TextBlock Text="选中字面设置" Style="{StaticResource Caption}" Margin="0,0,0,4" />
+                            <ComboBox ItemsSource="{Binding FontFamilies}" SelectedItem="{Binding SelectedFace.Family}"
+                                      Margin="0,0,0,6" />
+                            <Grid Margin="0,0,0,6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="90" />
+                                </Grid.ColumnDefinitions>
+                                <TextBox Grid.Column="0" Text="{Binding SelectedFace.Size, UpdateSourceTrigger=PropertyChanged}"
+                                         Padding="6,5" Background="#141B24" Foreground="{StaticResource TextBrush}"
+                                         BorderBrush="{StaticResource EdgeBrush}" FontFamily="Consolas" Margin="0,0,6,0" />
+                                <CheckBox Grid.Column="1" Content="粗体" IsChecked="{Binding SelectedFace.Bold}"
+                                          Foreground="{StaticResource SubTextBrush}" VerticalAlignment="Center" />
+                            </Grid>
+                            <TextBox Text="{Binding SelectedFace.Charset, UpdateSourceTrigger=PropertyChanged}"
+                                     Height="54" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"
+                                     Padding="6,5" Background="#141B24" Foreground="{StaticResource TextBrush}"
+                                     BorderBrush="{StaticResource EdgeBrush}" FontFamily="Consolas" FontSize="11.5"
+                                     Margin="0,0,0,4" />
+
+
+                        </StackPanel>
+                    </Border>
+
+                    <Border Grid.Column="1" Style="{StaticResource Card}" Margin="14,0,0,0">
+                        <StackPanel>
+                            <TextBlock Text="字面列表" Style="{StaticResource H2}" Margin="0,0,0,6" />
+                            <ListBox ItemsSource="{Binding Faces}" SelectedItem="{Binding SelectedFace}"
+                                     Height="88" Background="#141B24" Foreground="{StaticResource TextBrush}"
+                                     BorderBrush="{StaticResource EdgeBrush}" Margin="0,0,0,6">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding Label}" FontFamily="Consolas" FontSize="11.5" />
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                                <Button Content="+ 添加" Style="{StaticResource GhostButton}" Padding="10,4"
+                                        Command="{Binding AddFaceCommand}" Margin="0,0,6,0" />
+                                <Button Content="− 删除" Style="{StaticResource GhostButton}" Padding="10,4"
+                                        Command="{Binding RemoveFaceCommand}" />
+                            </StackPanel>
+
+                            <Button Content="开始烘焙" Style="{StaticResource PrimaryButton}"
+                                    Command="{Binding BakeFontCommand}" Margin="0,0,0,8"
+                                    HorizontalAlignment="Stretch" />
+                            <Button Content="上传到设备（0x040000）" Style="{StaticResource PrimaryButton}"
+                                    Command="{Binding UploadFontCommand}" Margin="0,0,0,8"
+                                    HorizontalAlignment="Stretch" />
+                            <Button Content="另存为 .afont" Style="{StaticResource GhostButton}"
+                                    Command="{Binding SaveFontCommand}" Margin="0,0,0,10"
+                                    HorizontalAlignment="Stretch" />
+
+                            <TextBlock Style="{StaticResource Caption}" TextWrapping="Wrap" LineHeight="19"
+                                       Text="输出为 8-bit alpha 字库：设备侧只需按 alpha 混合即可用任意颜色绘制，自带抗锯齿。" />
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </TabItem>
+
+            <TabItem Header="字库调试" Style="{StaticResource NavTabItem}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="300" />
+                    </Grid.ColumnDefinitions>
+
+                    <Border Grid.Column="0" Style="{StaticResource Card}">
+                        <StackPanel>
+                            <TextBlock Text="拖动文字调整位置，松开鼠标立即推送到屏幕" Style="{StaticResource Caption}" Margin="0,0,0,8" />
+                            <Border Background="#101418" BorderBrush="{StaticResource EdgeBrush}" BorderThickness="1"
+                                    CornerRadius="6" Width="320" Height="172" HorizontalAlignment="Left">
+                                <ItemsControl ItemsSource="{Binding TextItems}" Width="320" Height="172">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate><Canvas /></ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemContainerStyle>
+                                        <Style TargetType="ContentPresenter">
+                                            <Setter Property="Canvas.Left" Value="{Binding Left}" />
+                                            <Setter Property="Canvas.Top" Value="{Binding Top}" />
+                                        </Style>
+                                    </ItemsControl.ItemContainerStyle>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border Background="#33000000" BorderBrush="#3CC8FF" BorderThickness="1"
+                                                    Padding="3,1" Cursor="SizeAll"
+                                                    MouseLeftButtonDown="OnTextDown"
+                                                    MouseMove="OnTextMove"
+                                                    MouseLeftButtonUp="OnTextUp">
+                                                <TextBlock Text="{Binding Text}" Foreground="{Binding Brush}"
+                                                           FontFamily="Consolas" FontSize="{Binding PreviewSize}" />
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </Border>
+                            <TextBlock Text="{Binding FontDebugInfo}" Style="{StaticResource Value}" Margin="0,10,0,0" TextWrapping="Wrap" />
+                        </StackPanel>
+                    </Border>
+
+                    <Border Grid.Column="1" Style="{StaticResource Card}" Margin="14,0,0,0">
+                        <StackPanel>
+                            <TextBlock Text="文本项" Style="{StaticResource H2}" Margin="0,0,0,6" />
+                            <ListBox ItemsSource="{Binding TextItems}" SelectedItem="{Binding SelectedText}" Height="76"
+                                     Background="#141B24" Foreground="{StaticResource TextBrush}"
+                                     BorderBrush="{StaticResource EdgeBrush}" Margin="0,0,0,6">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding Text}" FontFamily="Consolas" FontSize="11.5" />
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                                <Button Content="+ 添加" Style="{StaticResource GhostButton}" Padding="10,4"
+                                        Command="{Binding AddTextCommand}" Margin="0,0,6,0" />
+                                <Button Content="− 删除" Style="{StaticResource GhostButton}" Padding="10,4"
+                                        Command="{Binding RemoveTextCommand}" />
+                            </StackPanel>
+
+                            <TextBlock Text="文字" Style="{StaticResource Caption}" Margin="0,0,0,3" />
+                            <TextBox Text="{Binding SelectedText.Text, UpdateSourceTrigger=PropertyChanged}" Padding="6,5"
+                                     Background="#141B24" Foreground="{StaticResource TextBrush}"
+                                     BorderBrush="{StaticResource EdgeBrush}" Margin="0,0,0,6" />
+
+                            <Grid Margin="0,0,0,6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="70" />
+                                </Grid.ColumnDefinitions>
+                                <TextBox Grid.Column="0" Text="{Binding SelectedText.ColorHex, UpdateSourceTrigger=PropertyChanged}"
+                                         Padding="6,5" Background="#141B24" Foreground="{StaticResource TextBrush}"
+                                         BorderBrush="{StaticResource EdgeBrush}" FontFamily="Consolas" Margin="0,0,6,0" />
+                                <TextBox Grid.Column="1" Text="{Binding SelectedText.Face, UpdateSourceTrigger=PropertyChanged}"
+                                         Padding="6,5" Background="#141B24" Foreground="{StaticResource TextBrush}"
+                                         BorderBrush="{StaticResource EdgeBrush}" FontFamily="Consolas" />
+                            </Grid>
+
+                            <Grid Margin="0,0,0,6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBox Grid.Column="0" Text="{Binding TextCellW, UpdateSourceTrigger=PropertyChanged}"
+                                         ToolTip="单元格宽（0=自动）" Padding="6,5" Background="#141B24"
+                                         Foreground="{StaticResource TextBrush}" BorderBrush="{StaticResource EdgeBrush}"
+                                         FontFamily="Consolas" Margin="0,0,6,0" />
+                                <TextBox Grid.Column="1" Text="{Binding TextCellH, UpdateSourceTrigger=PropertyChanged}"
+                                         ToolTip="单元格高（0=自动）" Padding="6,5" Background="#141B24"
+                                         Foreground="{StaticResource TextBrush}" BorderBrush="{StaticResource EdgeBrush}"
+                                         FontFamily="Consolas" />
+                            </Grid>
+
+                            <TextBlock Text="背景色（用于 alpha 混合）" Style="{StaticResource Caption}" Margin="0,0,0,3" />
+                            <TextBox Text="{Binding TextBgHex, UpdateSourceTrigger=PropertyChanged}" Padding="6,5"
+                                     Background="#141B24" Foreground="{StaticResource TextBrush}"
+                                     BorderBrush="{StaticResource EdgeBrush}" FontFamily="Consolas" Margin="0,0,0,8" />
+
+                            <CheckBox Content="拖动时实时推送" IsChecked="{Binding AutoPush}"
+                                      Foreground="{StaticResource SubTextBrush}" Margin="0,0,0,10" />
+
+                            <Button Content="推送全部" Style="{StaticResource PrimaryButton}"
+                                    Command="{Binding PushTextsCommand}" Margin="0,0,0,8" HorizontalAlignment="Stretch" />
+                            <Button Content="清屏" Style="{StaticResource GhostButton}"
+                                    Command="{Binding ClearScreenCommand}" HorizontalAlignment="Stretch" />
+
+
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </TabItem>
+
+            <TabItem Header="运行日志" Style="{StaticResource NavTabItem}">
+                <Border Style="{StaticResource Card}">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+
+                        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,10">
+                            <TextBlock Text="运行日志" Style="{StaticResource H2}" VerticalAlignment="Center" />
+                            <Button Content="清空" Style="{StaticResource GhostButton}" Margin="14,0,0,0"
+                                    Command="{Binding ClearLogCommand}" Padding="10,4" />
+                        </StackPanel>
+
+                        <ListBox Grid.Row="1" ItemsSource="{Binding Log.Entries}" Background="Transparent"
+                                 BorderThickness="0" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid Margin="0,1">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="66" />
+                                            <ColumnDefinition Width="52" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0" Text="{Binding TimeText}" FontFamily="Consolas"
+                                                   Foreground="{StaticResource MutedBrush}" FontSize="11.5" />
+                                        <TextBlock Grid.Column="1" Text="{Binding LevelText}" FontFamily="Consolas"
+                                                   FontSize="11.5">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Foreground" Value="{StaticResource SubTextBrush}" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding Level}" Value="Good">
+                                                            <Setter Property="Foreground" Value="{StaticResource GoodBrush}" />
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding Level}" Value="Warn">
+                                                            <Setter Property="Foreground" Value="{StaticResource WarnBrush}" />
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding Level}" Value="Error">
+                                                            <Setter Property="Foreground" Value="{StaticResource BadBrush}" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                        <TextBlock Grid.Column="2" Text="{Binding Message}" TextWrapping="Wrap"
+                                                   Foreground="{StaticResource TextBrush}" FontSize="12" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </Grid>
+                </Border>
+            </TabItem>
+        </TabControl>
+
+        <!-- footer -->
+        <Border Grid.Row="2" Style="{StaticResource Card}" Padding="14,8" Margin="0,14,0,0">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="240" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <TextBlock Grid.Column="0" Text="{Binding StatusLine}" Style="{StaticResource Caption}"
+                           VerticalAlignment="Center" />
+                <ProgressBar Grid.Column="1" Value="{Binding Progress, Mode=OneWay}" Maximum="1"
+                             Visibility="{Binding Busy, Converter={StaticResource BoolToVis}}"
+                             VerticalAlignment="Center" Margin="0,0,10,0" />
+                <TextBlock Grid.Column="2" Text="{Binding ProgressText}" Style="{StaticResource Caption}"
+                           VerticalAlignment="Center" />
+            </Grid>
+        </Border>
+    </Grid>
+</Window>
